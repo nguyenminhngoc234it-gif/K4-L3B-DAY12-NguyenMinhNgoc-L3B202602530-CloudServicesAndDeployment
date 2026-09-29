@@ -7,8 +7,8 @@
 # NHIỆM VỤ: sửa file này thành bản production-ready. Yêu cầu:
 #   [ ] Multi-stage build: stage `builder` cài dependency, stage runtime
 #       chỉ copy kết quả sang → image nhỏ hơn, không mang theo compiler.
-#       Cú pháp: `FROM python:3.11-slim AS builder`
-#   [ ] Base image slim (hoặc alpine), không dùng `python:3.11` bản đầy đủ
+#       Cú pháp: `FROM python:3.13-slim AS builder`
+#   [ ] Base image slim (hoặc alpine), không dùng `python:3.13` bản đầy đủ
 #   [ ] COPY requirements.txt và pip install TRƯỚC khi COPY source code
 #       (Docker cache theo layer: sửa 1 dòng code không phải cài lại thư viện)
 #   [ ] Tạo user thường và chuyển sang bằng lệnh `USER` — container chạy
@@ -21,14 +21,34 @@
 #            docker images day12-agent:prod     # xem dung lượng
 # ═══════════════════════════════════════════════════════════════════
 
-FROM python:3.11
+FROM python:3.13-slim AS builder
+
+WORKDIR /build
+
+COPY requirements.txt .
+RUN python -m pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+FROM python:3.13-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=8000
 
 WORKDIR /app
 
-COPY . .
+COPY --from=builder /install /usr/local
+COPY app ./app
+COPY utils ./utils
 
-RUN pip install -r requirements.txt
+RUN addgroup --system appgroup \
+    && adduser --system --ingroup appgroup appuser \
+    && chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8000') + '/health', timeout=3)"
+
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

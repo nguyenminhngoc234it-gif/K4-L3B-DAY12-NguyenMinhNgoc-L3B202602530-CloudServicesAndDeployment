@@ -4,3 +4,21 @@
 
 .git
 .gitignore
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python local files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local/build artifacts
+*.log
+dist/
+build/
+screenshots/
